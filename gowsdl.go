@@ -35,6 +35,7 @@ type GoWSDL struct {
 	wsdl                  *WSDL
 	resolvedXSDExternals  map[string]bool
 	currentRecursionLevel uint8
+	version               string
 }
 
 var cacheDir = filepath.Join(os.TempDir(), "gowsdl-cache")
@@ -81,7 +82,7 @@ func downloadFile(url string, ignoreTLS bool) ([]byte, error) {
 }
 
 // NewGoWSDL initializes WSDL generator.
-func NewGoWSDL(file, pkg string, ignoreTLS bool, exportAllTypes bool) (*GoWSDL, error) {
+func NewGoWSDL(file, pkg string, ignoreTLS bool, exportAllTypes bool, version string) (*GoWSDL, error) {
 	file = strings.TrimSpace(file)
 	if file == "" {
 		return nil, errors.New("WSDL file is required to generate Go proxy")
@@ -106,6 +107,7 @@ func NewGoWSDL(file, pkg string, ignoreTLS bool, exportAllTypes bool) (*GoWSDL, 
 		pkg:          pkg,
 		ignoreTLS:    ignoreTLS,
 		makePublicFn: makePublicFn,
+		version:      version,
 	}, nil
 }
 

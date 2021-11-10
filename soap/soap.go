@@ -10,6 +10,10 @@ import (
 	"net"
 	"net/http"
 	"time"
+
+	"github.com/hooklift/gowsdl/soap/share"
+	"github.com/hooklift/gowsdl/soap/soap1"
+	"github.com/hooklift/gowsdl/soap/soap2"
 )
 
 type SOAPEncoder interface {
@@ -21,132 +25,6 @@ type SOAPDecoder interface {
 	Decode(v interface{}) error
 }
 
-type SOAPEnvelopeResponse struct {
-	XMLName     xml.Name `xml:"http://schemas.xmlsoap.org/soap/envelope/ Envelope"`
-	Header      *SOAPHeaderResponse
-	Body        SOAPBodyResponse
-	Attachments []MIMEMultipartAttachment `xml:"attachments,omitempty"`
-}
-
-type SOAPEnvelope struct {
-	XMLName xml.Name `xml:"soap:Envelope"`
-	XmlNS   string   `xml:"xmlns:soap,attr"`
-
-	Header *SOAPHeader
-	Body   SOAPBody
-}
-
-type SOAPHeader struct {
-	XMLName xml.Name `xml:"soap:Header"`
-
-	Headers []interface{}
-}
-type SOAPHeaderResponse struct {
-	XMLName xml.Name `xml:"Header"`
-
-	Headers []interface{}
-}
-
-type SOAPBody struct {
-	XMLName xml.Name `xml:"soap:Body"`
-
-	Content interface{} `xml:",omitempty"`
-
-	// faultOccurred indicates whether the XML body included a fault;
-	// we cannot simply store SOAPFault as a pointer to indicate this, since
-	// fault is initialized to non-nil with user-provided detail type.
-	faultOccurred bool
-	Fault         *SOAPFault `xml:",omitempty"`
-}
-
-type SOAPBodyResponse struct {
-	XMLName xml.Name `xml:"Body"`
-
-	Content interface{} `xml:",omitempty"`
-
-	// faultOccurred indicates whether the XML body included a fault;
-	// we cannot simply store SOAPFault as a pointer to indicate this, since
-	// fault is initialized to non-nil with user-provided detail type.
-	faultOccurred bool
-	Fault         *SOAPFault `xml:",omitempty"`
-}
-
-type MIMEMultipartAttachment struct {
-	Name string
-	Data []byte
-}
-
-// UnmarshalXML unmarshals SOAPBody xml
-func (b *SOAPBodyResponse) UnmarshalXML(d *xml.Decoder, _ xml.StartElement) error {
-	if b.Content == nil {
-		return xml.UnmarshalError("Content must be a pointer to a struct")
-	}
-
-	var (
-		token    xml.Token
-		err      error
-		consumed bool
-	)
-
-Loop:
-	for {
-		if token, err = d.Token(); err != nil {
-			return err
-		}
-
-		if token == nil {
-			break
-		}
-
-		switch se := token.(type) {
-		case xml.StartElement:
-			if consumed {
-				return xml.UnmarshalError("Found multiple elements inside SOAP body; not wrapped-document/literal WS-I compliant")
-			} else if se.Name.Space == "http://schemas.xmlsoap.org/soap/envelope/" && se.Name.Local == "Fault" {
-				b.Content = nil
-
-				b.faultOccurred = true
-				err = d.DecodeElement(b.Fault, &se)
-				if err != nil {
-					return err
-				}
-
-				consumed = true
-			} else {
-				if err = d.DecodeElement(b.Content, &se); err != nil {
-					return err
-				}
-
-				consumed = true
-			}
-		case xml.EndElement:
-			break Loop
-		}
-	}
-
-	return nil
-}
-
-func (b *SOAPBody) ErrorFromFault() error {
-	if b.faultOccurred {
-		return b.Fault
-	}
-	b.Fault = nil
-	return nil
-}
-
-func (b *SOAPBodyResponse) ErrorFromFault() error {
-	if b.faultOccurred {
-		return b.Fault
-	}
-	b.Fault = nil
-	return nil
-}
-
-type DetailContainer struct {
-	Detail interface{}
-}
-
 type FaultError interface {
 	// ErrorString should return a short version of the detail as a string,
 	// which will be used in place of <faultstring> for the error message.
@@ -155,22 +33,6 @@ type FaultError interface {
 	ErrorString() string
 	// HasData indicates whether the composite fault contains any data.
 	HasData() bool
-}
-
-type SOAPFault struct {
-	XMLName xml.Name `xml:"http://schemas.xmlsoap.org/soap/envelope/ Fault"`
-
-	Code   string     `xml:"faultcode,omitempty"`
-	String string     `xml:"faultstring,omitempty"`
-	Actor  string     `xml:"faultactor,omitempty"`
-	Detail FaultError `xml:"detail,omitempty"`
-}
-
-func (f *SOAPFault) Error() string {
-	if f.Detail != nil && f.Detail.HasData() {
-		return f.Detail.ErrorString()
-	}
-	return f.String
 }
 
 // HTTPError is returned whenever the HTTP request to the server fails
@@ -187,11 +49,9 @@ func (e *HTTPError) Error() string {
 
 const (
 	// Predefined WSS namespaces to be used in
-	WssNsWSSE       string = "http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-secext-1.0.xsd"
-	WssNsWSU        string = "http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-utility-1.0.xsd"
-	WssNsType       string = "http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-username-token-profile-1.0#PasswordText"
-	mtomContentType string = `multipart/related; start-info="application/soap+xml"; type="application/xop+xml"; boundary="%s"`
-	XmlNsSoapEnv    string = "http://schemas.xmlsoap.org/soap/envelope/"
+	WssNsWSSE string = "http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-secext-1.0.xsd"
+	WssNsWSU  string = "http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-utility-1.0.xsd"
+	WssNsType string = "http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-username-token-profile-1.0#PasswordText"
 )
 
 type WSSSecurityHeader struct {
@@ -253,6 +113,7 @@ type options struct {
 	httpHeaders      map[string]string
 	mtom             bool
 	mma              bool
+	soapVersion      string
 }
 
 var defaultOptions = options{
@@ -263,6 +124,13 @@ var defaultOptions = options{
 
 // A Option sets options such as credentials, tls, etc.
 type Option func(*options)
+
+// soap version 1.1 or 1.2
+func WithSoapVersion(version string) Option {
+	return func(o *options) {
+		o.soapVersion = version
+	}
+}
 
 // WithHTTPClient is an Option to set the HTTP client to use
 // This cannot be used with WithTLSHandshakeTimeout, WithTLS,
@@ -339,7 +207,7 @@ type Client struct {
 	url         string
 	opts        *options
 	headers     []interface{}
-	attachments []MIMEMultipartAttachment
+	attachments []share.MIMEMultipartAttachment
 }
 
 // HTTPClient is a client which can make HTTP requests
@@ -368,7 +236,7 @@ func (s *Client) AddHeader(header interface{}) {
 
 // AddMIMEMultipartAttachment adds an attachment to the client that will be sent only if the
 // WithMIMEMultipartAttachments option is used
-func (s *Client) AddMIMEMultipartAttachment(attachment MIMEMultipartAttachment) {
+func (s *Client) AddMIMEMultipartAttachment(attachment share.MIMEMultipartAttachment) {
 	s.attachments = append(s.attachments, attachment)
 }
 
@@ -393,7 +261,7 @@ func (s *Client) Call(soapAction string, request, response interface{}) error {
 // Note that if SOAP fault is returned, it will be stored in the error.
 // On top the attachments array will be filled with attachments returned from the SOAP request.
 func (s *Client) CallContextWithAttachmentsAndFaultDetail(ctx context.Context, soapAction string, request,
-	response interface{}, faultDetail FaultError, attachments *[]MIMEMultipartAttachment) error {
+	response interface{}, faultDetail FaultError, attachments *[]share.MIMEMultipartAttachment) error {
 	return s.call(ctx, soapAction, request, response, faultDetail, attachments)
 }
 
@@ -412,14 +280,23 @@ func (s *Client) CallWithFaultDetail(soapAction string, request, response interf
 }
 
 func (s *Client) call(ctx context.Context, soapAction string, request, response interface{}, faultDetail FaultError,
-	retAttachments *[]MIMEMultipartAttachment) error {
+	retAttachments *[]share.MIMEMultipartAttachment) error {
+	if s.opts.soapVersion == "1.2" {
+		return s.callVersion2(ctx, soapAction, request, response, faultDetail, retAttachments)
+	} else {
+		return s.callVersion1(ctx, soapAction, request, response, faultDetail, retAttachments)
+	}
+}
+
+func (s *Client) callVersion1(ctx context.Context, soapAction string, request, response interface{}, faultDetail FaultError,
+	retAttachments *[]share.MIMEMultipartAttachment) error {
 	// SOAP envelope capable of namespace prefixes
-	envelope := SOAPEnvelope{
-		XmlNS: XmlNsSoapEnv,
+	envelope := &soap1.SOAPEnvelope{
+		XmlNS: soap1.XmlNsSoapEnv,
 	}
 
 	if s.headers != nil && len(s.headers) > 0 {
-		envelope.Header = &SOAPHeader{
+		envelope.Header = &soap1.SOAPHeader{
 			Headers: s.headers,
 		}
 	}
@@ -430,9 +307,9 @@ func (s *Client) call(ctx context.Context, soapAction string, request, response 
 	if s.opts.mtom && s.opts.mma {
 		return fmt.Errorf("cannot use MTOM (XOP) and MMA (MIME Multipart Attachments) option at the same time")
 	} else if s.opts.mtom {
-		encoder = newMtomEncoder(buffer)
+		encoder = share.NewMtomEncoder(buffer)
 	} else if s.opts.mma {
-		encoder = newMmaEncoder(buffer, s.attachments)
+		encoder = share.NewMmaEncoder(buffer, s.attachments)
 	} else {
 		encoder = xml.NewEncoder(buffer)
 	}
@@ -456,11 +333,11 @@ func (s *Client) call(ctx context.Context, soapAction string, request, response 
 	req = req.WithContext(ctx)
 
 	if s.opts.mtom {
-		req.Header.Add("Content-Type", fmt.Sprintf(mtomContentType, encoder.(*mtomEncoder).Boundary()))
+		req.Header.Add("Content-Type", fmt.Sprintf(share.MtomContentType, encoder.(*share.MtomEncoder).Boundary()))
 	} else if s.opts.mma {
-		req.Header.Add("Content-Type", fmt.Sprintf(mmaContentType, encoder.(*mmaEncoder).Boundary()))
+		req.Header.Add("Content-Type", fmt.Sprintf(share.MmaContentType, encoder.(*share.MmaEncoder).Boundary()))
 	} else {
-		req.Header.Add("Content-Type", "text/xml; charset=\"utf-8\"")
+		req.Header.Add("Content-Type", soap1.ContentType)
 	}
 	req.Header.Add("SOAPAction", soapAction)
 	req.Header.Set("User-Agent", "gowsdl/0.1")
@@ -500,22 +377,22 @@ func (s *Client) call(ctx context.Context, soapAction string, request, response 
 
 	// xml Decoder (used with and without MTOM) cannot handle namespace prefixes (yet),
 	// so we have to use a namespace-less response envelope
-	respEnvelope := new(SOAPEnvelopeResponse)
-	respEnvelope.Body = SOAPBodyResponse{
+	respEnvelope := new(soap1.SOAPEnvelopeResponse)
+	respEnvelope.Body = soap1.SOAPBodyResponse{
 		Content: response,
-		Fault: &SOAPFault{
+		Fault: &soap1.SOAPFault{
 			Detail: faultDetail,
 		},
 	}
 
-	mtomBoundary, err := getMtomHeader(res.Header.Get("Content-Type"))
+	mtomBoundary, err := share.GetMtomHeader(res.Header.Get("Content-Type"))
 	if err != nil {
 		return err
 	}
 
 	var mmaBoundary string
-	if s.opts.mma{
-		mmaBoundary, err = getMmaHeader(res.Header.Get("Content-Type"))
+	if s.opts.mma {
+		mmaBoundary, err = share.GetMmaHeader(res.Header.Get("Content-Type"))
 		if err != nil {
 			return err
 		}
@@ -523,13 +400,141 @@ func (s *Client) call(ctx context.Context, soapAction string, request, response 
 
 	var dec SOAPDecoder
 	if mtomBoundary != "" {
-		dec = newMtomDecoder(res.Body, mtomBoundary)
+		dec = share.NewMtomDecoder(res.Body, mtomBoundary)
 	} else if mmaBoundary != "" {
-		dec = newMmaDecoder(res.Body, mmaBoundary)
+		dec = share.NewMmaDecoder(res.Body, mmaBoundary)
+	} else {
+		dec = xml.NewDecoder(res.Body)
+
+	}
+	if err := dec.Decode(respEnvelope); err != nil {
+		return err
+	}
+
+	if respEnvelope.Attachments != nil {
+		*retAttachments = respEnvelope.Attachments
+	}
+	return respEnvelope.Body.ErrorFromFault()
+}
+
+func (s *Client) callVersion2(ctx context.Context, soapAction string, request, response interface{}, faultDetail FaultError,
+	retAttachments *[]share.MIMEMultipartAttachment) error {
+	// SOAP envelope capable of namespace prefixes
+	envelope := soap2.SOAPEnvelope{
+		XmlNS: soap2.XmlNsSoapEnv,
+	}
+
+	if s.headers != nil && len(s.headers) > 0 {
+		envelope.Header = &soap2.SOAPHeader{
+			Headers: s.headers,
+		}
+	}
+
+	envelope.Body.Content = request
+	buffer := new(bytes.Buffer)
+	var encoder SOAPEncoder
+	if s.opts.mtom && s.opts.mma {
+		return fmt.Errorf("cannot use MTOM (XOP) and MMA (MIME Multipart Attachments) option at the same time")
+	} else if s.opts.mtom {
+		encoder = share.NewMtomEncoder(buffer)
+	} else if s.opts.mma {
+		encoder = share.NewMmaEncoder(buffer, s.attachments)
+	} else {
+		encoder = xml.NewEncoder(buffer)
+	}
+
+	if err := encoder.Encode(envelope); err != nil {
+		return err
+	}
+
+	if err := encoder.Flush(); err != nil {
+		return err
+	}
+
+	req, err := http.NewRequest("POST", s.url, buffer)
+	if err != nil {
+		return err
+	}
+	if s.opts.auth != nil {
+		req.SetBasicAuth(s.opts.auth.Login, s.opts.auth.Password)
+	}
+
+	req = req.WithContext(ctx)
+
+	if s.opts.mtom {
+		req.Header.Add("Content-Type", fmt.Sprintf(share.MtomContentType, encoder.(*share.MtomEncoder).Boundary()))
+	} else if s.opts.mma {
+		req.Header.Add("Content-Type", fmt.Sprintf(share.MmaContentType, encoder.(*share.MmaEncoder).Boundary()))
+	} else {
+		req.Header.Add("Content-Type", soap2.ContentType)
+	}
+
+	req.Header.Set("User-Agent", "gowsdl/0.1")
+	if s.opts.httpHeaders != nil {
+		for k, v := range s.opts.httpHeaders {
+			req.Header.Set(k, v)
+		}
+	}
+	req.Close = true
+
+	client := s.opts.client
+	if client == nil {
+		tr := &http.Transport{
+			TLSClientConfig: s.opts.tlsCfg,
+			DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+				d := net.Dialer{Timeout: s.opts.timeout}
+				return d.DialContext(ctx, network, addr)
+			},
+			TLSHandshakeTimeout: s.opts.tlshshaketimeout,
+		}
+		client = &http.Client{Timeout: s.opts.contimeout, Transport: tr}
+	}
+
+	res, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer res.Body.Close()
+
+	if res.StatusCode >= 400 {
+		body, _ := ioutil.ReadAll(res.Body)
+		return &HTTPError{
+			StatusCode:   res.StatusCode,
+			ResponseBody: body,
+		}
+	}
+
+	// xml Decoder (used with and without MTOM) cannot handle namespace prefixes (yet),
+	// so we have to use a namespace-less response envelope
+	respEnvelope := new(soap2.SOAPEnvelopeResponse)
+	respEnvelope.Body = soap2.SOAPBodyResponse{
+		Content: response,
+		Fault: &soap2.SOAPFault{
+			Detail: faultDetail,
+		},
+	}
+
+	mtomBoundary, err := share.GetMtomHeader(res.Header.Get("Content-Type"))
+	if err != nil {
+		return err
+	}
+
+	var mmaBoundary string
+	if s.opts.mma {
+		mmaBoundary, err = share.GetMmaHeader(res.Header.Get("Content-Type"))
+		if err != nil {
+			return err
+		}
+	}
+
+	var dec SOAPDecoder
+	if mtomBoundary != "" {
+		dec = share.NewMtomDecoder(res.Body, mtomBoundary)
+	} else if mmaBoundary != "" {
+		dec = share.NewMmaDecoder(res.Body, mmaBoundary)
 	} else {
 		dec = xml.NewDecoder(res.Body)
 	}
-
 	if err := dec.Decode(respEnvelope); err != nil {
 		return err
 	}

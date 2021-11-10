@@ -1,4 +1,4 @@
-package soap
+package share
 
 import (
 	"bytes"
@@ -10,34 +10,35 @@ import (
 	"mime"
 	"mime/multipart"
 	"net/textproto"
+	"reflect"
 	"strings"
 )
 
-const mmaContentType string = `multipart/related; start="<soaprequest@gowsdl.lib>"; type="text/xml"; boundary="%s"`
+const MmaContentType string = `multipart/related; start="<soaprequest@gowsdl.lib>"; type="text/xml"; boundary="%s"`
 
-type mmaEncoder struct {
+type MmaEncoder struct {
 	writer      *multipart.Writer
 	attachments []MIMEMultipartAttachment
 }
 
-type mmaDecoder struct {
+type MmaDecoder struct {
 	reader *multipart.Reader
 }
 
-func newMmaEncoder(w io.Writer, attachments []MIMEMultipartAttachment) *mmaEncoder {
-	return &mmaEncoder{
+func NewMmaEncoder(w io.Writer, attachments []MIMEMultipartAttachment) *MmaEncoder {
+	return &MmaEncoder{
 		writer:      multipart.NewWriter(w),
 		attachments: attachments,
 	}
 }
 
-func newMmaDecoder(r io.Reader, boundary string) *mmaDecoder {
-	return &mmaDecoder{
+func NewMmaDecoder(r io.Reader, boundary string) *MmaDecoder {
+	return &MmaDecoder{
 		reader: multipart.NewReader(r, boundary),
 	}
 }
 
-func (e *mmaEncoder) Encode(v interface{}) error {
+func (e *MmaEncoder) Encode(v interface{}) error {
 	var err error
 	var soapPartWriter io.Writer
 
@@ -76,15 +77,15 @@ func (e *mmaEncoder) Encode(v interface{}) error {
 	return nil
 }
 
-func (e *mmaEncoder) Flush() error {
+func (e *MmaEncoder) Flush() error {
 	return e.writer.Close()
 }
 
-func (e *mmaEncoder) Boundary() string {
+func (e *MmaEncoder) Boundary() string {
 	return e.writer.Boundary()
 }
 
-func getMmaHeader(contentType string) (string, error) {
+func GetMmaHeader(contentType string) (string, error) {
 	mediaType, params, err := mime.ParseMediaType(contentType)
 	if err != nil {
 		return "", err
@@ -106,8 +107,8 @@ func getMmaHeader(contentType string) (string, error) {
 	return "", nil
 }
 
-func (d *mmaDecoder) Decode(v interface{}) error {
-	soapEnvResp := v.(*SOAPEnvelopeResponse)
+func (d *MmaDecoder) Decode(v interface{}) error {
+	// soapEnvResp := v.(*SOAPEnvelopeResponse)
 	attachments := make([]MIMEMultipartAttachment, 0)
 	for {
 		p, err := d.reader.NextPart()
@@ -143,7 +144,10 @@ func (d *mmaDecoder) Decode(v interface{}) error {
 		}
 	}
 	if len(attachments) > 0 {
-		soapEnvResp.Attachments = attachments
+		vf := reflect.ValueOf(v).Elem()
+		vf.FieldByName("Attachments").Set(reflect.ValueOf(attachments))
+		// soapEnvResp.Attachments = attachments
+		v = attachments
 	}
 
 	return nil

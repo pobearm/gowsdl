@@ -22,7 +22,7 @@ import (
 )
 
 func TestElementGenerationDoesntCommentOutStructProperty(t *testing.T) {
-	g, err := NewGoWSDL("fixtures/test.wsdl", "myservice", false, true)
+	g, err := NewGoWSDL("fixtures/test.wsdl", "myservice", false, true, "1.1")
 	if err != nil {
 		t.Error(err)
 	}
@@ -39,7 +39,7 @@ func TestElementGenerationDoesntCommentOutStructProperty(t *testing.T) {
 }
 
 func TestComplexTypeWithInlineSimpleType(t *testing.T) {
-	g, err := NewGoWSDL("fixtures/test.wsdl", "myservice", false, true)
+	g, err := NewGoWSDL("fixtures/test.wsdl", "myservice", false, true, "1.1")
 	if err != nil {
 		t.Error(err)
 	}
@@ -64,7 +64,7 @@ func TestComplexTypeWithInlineSimpleType(t *testing.T) {
 }
 
 func TestAttributeRef(t *testing.T) {
-	g, err := NewGoWSDL("fixtures/test.wsdl", "myservice", false, true)
+	g, err := NewGoWSDL("fixtures/test.wsdl", "myservice", false, true, "1.1")
 	if err != nil {
 		t.Error(err)
 	}
@@ -102,7 +102,7 @@ func TestVboxGeneratesWithoutSyntaxErrors(t *testing.T) {
 	}
 
 	for _, file := range files {
-		g, err := NewGoWSDL(file, "myservice", false, true)
+		g, err := NewGoWSDL(file, "myservice", false, true, "1.1")
 		if err != nil {
 			t.Error(err)
 		}
@@ -129,7 +129,7 @@ func TestVboxGeneratesWithoutSyntaxErrors(t *testing.T) {
 
 func TestEnumerationsGeneratedCorrectly(t *testing.T) {
 	enumStringTest := func(t *testing.T, fixtureWsdl string, varName string, typeName string, enumString string) {
-		g, err := NewGoWSDL("fixtures/"+fixtureWsdl, "myservice", false, true)
+		g, err := NewGoWSDL("fixtures/"+fixtureWsdl, "myservice", false, true, "1.1")
 		if err != nil {
 			t.Error(err)
 		}
@@ -157,7 +157,7 @@ func TestEPCISWSDL(t *testing.T) {
 	log.SetFlags(0)
 	log.SetOutput(os.Stdout)
 
-	g, err := NewGoWSDL("./fixtures/epcis/EPCglobal-epcis-query-1_2.wsdl", "myservice", true, true)
+	g, err := NewGoWSDL("./fixtures/epcis/EPCglobal-epcis-query-1_2.wsdl", "myservice", true, true, "1.1")
 	if err != nil {
 		t.Error(err)
 	}

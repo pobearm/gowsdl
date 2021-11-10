@@ -70,6 +70,7 @@ var outFile = flag.String("o", "myservice.go", "File where the generated code wi
 var dir = flag.String("d", "./", "Directory under which package directory will be created")
 var insecure = flag.Bool("i", false, "Skips TLS Verification")
 var makePublic = flag.Bool("make-public", true, "Make the generated types public/exported")
+var soapVersion = flag.String("sv", "1.2", "SOAP verion 1.1 or 1.2")
 
 func init() {
 	log.SetFlags(0)
@@ -103,7 +104,7 @@ func main() {
 	}
 
 	// load wsdl
-	gowsdl, err := gen.NewGoWSDL(wsdlPath, *pkg, *insecure, *makePublic)
+	gowsdl, err := gen.NewGoWSDL(wsdlPath, *pkg, *insecure, *makePublic, *soapVersion)
 	if err != nil {
 		log.Fatalln(err)
 	}
@@ -115,7 +116,7 @@ func main() {
 	}
 
 	pkg := filepath.Join(*dir, *pkg)
-	err = os.Mkdir(pkg, 0744)
+	_ = os.Mkdir(pkg, 0744)
 
 	file, err := os.Create(filepath.Join(pkg, *outFile))
 	if err != nil {

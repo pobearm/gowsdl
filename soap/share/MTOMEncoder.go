@@ -1,4 +1,4 @@
-package soap
+package share
 
 import (
 	"encoding/xml"
@@ -14,7 +14,11 @@ import (
 	"strings"
 )
 
-type mtomEncoder struct {
+const (
+	MtomContentType string = `multipart/related; start-info="application/soap+xml"; type="application/xop+xml"; boundary="%s"`
+)
+
+type MtomEncoder struct {
 	writer *multipart.Writer
 }
 
@@ -101,13 +105,13 @@ func (b *Binary) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 	return nil
 }
 
-func newMtomEncoder(w io.Writer) *mtomEncoder {
-	return &mtomEncoder{
+func NewMtomEncoder(w io.Writer) *MtomEncoder {
+	return &MtomEncoder{
 		writer: multipart.NewWriter(w),
 	}
 }
 
-func (e *mtomEncoder) Encode(v interface{}) error {
+func (e *MtomEncoder) Encode(v interface{}) error {
 	binaryFields := make([]reflect.Value, 0)
 	getBinaryFields(v, &binaryFields)
 	enableMTOMMode(binaryFields)
@@ -145,7 +149,7 @@ func (e *mtomEncoder) Encode(v interface{}) error {
 	return nil
 }
 
-func (e *mtomEncoder) Flush() error {
+func (e *MtomEncoder) Flush() error {
 	return e.writer.Close()
 }
 
@@ -175,15 +179,15 @@ func enableMTOMMode(fields []reflect.Value) {
 	}
 }
 
-func (e *mtomEncoder) Boundary() string {
+func (e *MtomEncoder) Boundary() string {
 	return e.writer.Boundary()
 }
 
-type mtomDecoder struct {
+type MtomDecoder struct {
 	reader *multipart.Reader
 }
 
-func getMtomHeader(contentType string) (string, error) {
+func GetMtomHeader(contentType string) (string, error) {
 	mediaType, params, err := mime.ParseMediaType(contentType)
 	if err != nil {
 		return "", err
@@ -211,17 +215,17 @@ func getMtomHeader(contentType string) (string, error) {
 	return "", nil
 }
 
-func newMtomDecoder(r io.Reader, boundary string) *mtomDecoder {
-	return &mtomDecoder{
+func NewMtomDecoder(r io.Reader, boundary string) *MtomDecoder {
+	return &MtomDecoder{
 		reader: multipart.NewReader(r, boundary),
 	}
 }
 
-func (d *mtomDecoder) Decode(v interface{}) error {
+func (d *MtomDecoder) Decode(v interface{}) error {
 	fields := make([]reflect.Value, 0)
 	getBinaryFields(v, &fields)
 
-	packages := make(map[string]*Binary, 0)
+	packages := make(map[string]*Binary)
 	for {
 		p, err := d.reader.NextPart()
 		if err != nil {

@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/hooklift/gowsdl/soap/share"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -24,8 +25,8 @@ type Ping struct {
 type PingRequest struct {
 	// XMLName xml.Name `xml:"http://example.com/service.xsd PingRequest"`
 
-	Message    string  `xml:"Message,omitempty"`
-	Attachment *Binary `xml:"Attachment,omitempty"`
+	Message    string        `xml:"Message,omitempty"`
+	Attachment *share.Binary `xml:"Attachment,omitempty"`
 }
 
 type PingResponse struct {
@@ -92,7 +93,7 @@ func TestClient_Send_Correct_Headers(t *testing.T) {
 			map[string]string{
 				"User-Agent":   "gowsdl/0.1",
 				"SOAPAction":   "GetTrade",
-				"Content-Type": "text/xml; charset=\"utf-8\"",
+				"Content-Type": `text/xml; charset=UTF-8`,
 			},
 		},
 		// override default User-Agent
@@ -147,11 +148,11 @@ func TestClient_Attachments_WithAttachmentResponse(t *testing.T) {
 	defer ts.Close()
 
 	// GIVEN
-	firstAtt := MIMEMultipartAttachment{
+	firstAtt := share.MIMEMultipartAttachment{
 		Name: "First_Attachment",
 		Data: []byte(`foobar`),
 	}
-	secondAtt := MIMEMultipartAttachment{
+	secondAtt := share.MIMEMultipartAttachment{
 		Name: "Second_Attachment",
 		Data: []byte(`tl;tr`),
 	}
@@ -163,7 +164,7 @@ func TestClient_Attachments_WithAttachmentResponse(t *testing.T) {
 		ContentID: "First_Attachment",
 	}
 	reply := new(AttachmentRequest)
-	retAttachments := make([]MIMEMultipartAttachment, 0)
+	retAttachments := make([]share.MIMEMultipartAttachment, 0)
 
 	// WHEN
 	if err := client.CallContextWithAttachmentsAndFaultDetail(context.TODO(), "''", req,
@@ -189,7 +190,7 @@ func TestClient_MTOM(t *testing.T) {
 	defer ts.Close()
 
 	client := NewClient(ts.URL, WithMTOM())
-	req := &PingRequest{Attachment: NewBinary([]byte("Attached data")).SetContentType("text/plain")}
+	req := &PingRequest{Attachment: share.NewBinary([]byte("Attached data")).SetContentType("text/plain")}
 	reply := &PingRequest{}
 	if err := client.Call("GetData", req, reply); err != nil {
 		t.Fatalf("couln't call service: %v", err)
