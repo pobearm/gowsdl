@@ -7,6 +7,7 @@ import (
 	"encoding/xml"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"net"
 	"net/http"
 	"time"
@@ -114,6 +115,7 @@ type options struct {
 	mtom             bool
 	mma              bool
 	soapVersion      string
+	debug            bool
 }
 
 var defaultOptions = options{
@@ -124,6 +126,12 @@ var defaultOptions = options{
 
 // A Option sets options such as credentials, tls, etc.
 type Option func(*options)
+
+func WithDebug(debug bool) Option {
+	return func(o *options) {
+		o.debug = debug
+	}
+}
 
 // soap version 1.1 or 1.2
 func WithSoapVersion(version string) Option {
@@ -290,6 +298,10 @@ func (s *Client) call(ctx context.Context, soapAction string, request, response 
 
 func (s *Client) callVersion1(ctx context.Context, soapAction string, request, response interface{}, faultDetail FaultError,
 	retAttachments *[]share.MIMEMultipartAttachment) error {
+
+	if s.opts.debug {
+		log.Println("we do soap1.1 now")
+	}
 	// SOAP envelope capable of namespace prefixes
 	envelope := &soap1.SOAPEnvelope{
 		XmlNS: soap1.XmlNsSoapEnv,
@@ -320,6 +332,9 @@ func (s *Client) callVersion1(ctx context.Context, soapAction string, request, r
 
 	if err := encoder.Flush(); err != nil {
 		return err
+	}
+	if s.opts.debug {
+		log.Println(buffer.String())
 	}
 
 	req, err := http.NewRequest("POST", s.url, buffer)
@@ -419,6 +434,10 @@ func (s *Client) callVersion1(ctx context.Context, soapAction string, request, r
 
 func (s *Client) callVersion2(ctx context.Context, soapAction string, request, response interface{}, faultDetail FaultError,
 	retAttachments *[]share.MIMEMultipartAttachment) error {
+
+	if s.opts.debug {
+		log.Println("we do soap1.2 now")
+	}
 	// SOAP envelope capable of namespace prefixes
 	envelope := soap2.SOAPEnvelope{
 		XmlNS: soap2.XmlNsSoapEnv,
@@ -449,6 +468,9 @@ func (s *Client) callVersion2(ctx context.Context, soapAction string, request, r
 
 	if err := encoder.Flush(); err != nil {
 		return err
+	}
+	if s.opts.debug {
+		log.Println(buffer.String())
 	}
 
 	req, err := http.NewRequest("POST", s.url, buffer)
