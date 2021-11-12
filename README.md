@@ -18,7 +18,9 @@ Generates Go code from a WSDL file.
 * Support:
 	* WSDL 1.1
 	* XML Schema 1.0
-	* SOAP 1.1
+	* SOAP 1.1  
+	* SOAP 1.2  
+
 * Resolve external XML Schemas
 * Support external and local WSDL
 
@@ -33,5 +35,17 @@ Usage: gowsdl [options] myservice.wsdl
   -p string
         Package under which code will be generated (default "myservice")
   -i    Skips TLS Verification
-  -v    Shows gowsdl version
+  -v    Shows gowsdl version  
+  -sv   "1.1" or "1.2", SOPA version
   ```
+
+  ```
+  client := soap.NewClient(
+		"url.....",
+		soap.WithTimeout(time.Second*5),
+		// soap.WithTLS(&tls.Config{InsecureSkipVerify: true}),
+		soap.WithHTTPClient(http.DefaultClient),
+		soap.WithSoapVersion("1.2"), //soap version
+		soap.WithDebug(true), //if debug is true, will log xml mesage.
+	)
+```
