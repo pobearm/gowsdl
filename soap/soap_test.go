@@ -91,7 +91,7 @@ func TestClient_Send_Correct_Headers(t *testing.T) {
 			"GetTrade",
 			map[string]string{},
 			map[string]string{
-				"User-Agent":   "gowsdl/0.1",
+				"User-Agent":   "gowsdl",
 				"SOAPAction":   "GetTrade",
 				"Content-Type": `text/xml; charset=UTF-8`,
 			},

@@ -48,57 +48,6 @@ func (e *HTTPError) Error() string {
 	return fmt.Sprintf("HTTP Status %d: %s", e.StatusCode, string(e.ResponseBody))
 }
 
-const (
-	// Predefined WSS namespaces to be used in
-	WssNsWSSE string = "http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-secext-1.0.xsd"
-	WssNsWSU  string = "http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-utility-1.0.xsd"
-	WssNsType string = "http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-username-token-profile-1.0#PasswordText"
-)
-
-type WSSSecurityHeader struct {
-	XMLName   xml.Name `xml:"http://schemas.xmlsoap.org/soap/envelope/ wsse:Security"`
-	XmlNSWsse string   `xml:"xmlns:wsse,attr"`
-
-	MustUnderstand string `xml:"mustUnderstand,attr,omitempty"`
-
-	Token *WSSUsernameToken `xml:",omitempty"`
-}
-
-type WSSUsernameToken struct {
-	XMLName   xml.Name `xml:"wsse:UsernameToken"`
-	XmlNSWsu  string   `xml:"xmlns:wsu,attr"`
-	XmlNSWsse string   `xml:"xmlns:wsse,attr"`
-
-	Id string `xml:"wsu:Id,attr,omitempty"`
-
-	Username *WSSUsername `xml:",omitempty"`
-	Password *WSSPassword `xml:",omitempty"`
-}
-
-type WSSUsername struct {
-	XMLName   xml.Name `xml:"wsse:Username"`
-	XmlNSWsse string   `xml:"xmlns:wsse,attr"`
-
-	Data string `xml:",chardata"`
-}
-
-type WSSPassword struct {
-	XMLName   xml.Name `xml:"wsse:Password"`
-	XmlNSWsse string   `xml:"xmlns:wsse,attr"`
-	XmlNSType string   `xml:"Type,attr"`
-
-	Data string `xml:",chardata"`
-}
-
-// NewWSSSecurityHeader creates WSSSecurityHeader instance
-func NewWSSSecurityHeader(user, pass, tokenID, mustUnderstand string) *WSSSecurityHeader {
-	hdr := &WSSSecurityHeader{XmlNSWsse: WssNsWSSE, MustUnderstand: mustUnderstand}
-	hdr.Token = &WSSUsernameToken{XmlNSWsu: WssNsWSU, XmlNSWsse: WssNsWSSE, Id: tokenID}
-	hdr.Token.Username = &WSSUsername{XmlNSWsse: WssNsWSSE, Data: user}
-	hdr.Token.Password = &WSSPassword{XmlNSWsse: WssNsWSSE, XmlNSType: WssNsType, Data: pass}
-	return hdr
-}
-
 type basicAuth struct {
 	Login    string
 	Password string
@@ -355,7 +304,7 @@ func (s *Client) callVersion1(ctx context.Context, soapAction string, request, r
 		req.Header.Add("Content-Type", soap1.ContentType)
 	}
 	req.Header.Add("SOAPAction", soapAction)
-	req.Header.Set("User-Agent", "gowsdl/0.1")
+	req.Header.Set("User-Agent", "gowsdl")
 	if s.opts.httpHeaders != nil {
 		for k, v := range s.opts.httpHeaders {
 			req.Header.Set(k, v)
@@ -375,7 +324,9 @@ func (s *Client) callVersion1(ctx context.Context, soapAction string, request, r
 		}
 		client = &http.Client{Timeout: s.opts.contimeout, Transport: tr}
 	}
-
+	if s.opts.debug {
+		log.Println("request to url: ", req.URL.String())
+	}
 	res, err := client.Do(req)
 	if err != nil {
 		return err
@@ -439,8 +390,10 @@ func (s *Client) callVersion2(ctx context.Context, soapAction string, request, r
 		log.Println("we do soap1.2 now")
 	}
 	// SOAP envelope capable of namespace prefixes
+	//TODO: XmlUrn
 	envelope := soap2.SOAPEnvelope{
-		XmlNS: soap2.XmlNsSoapEnv,
+		XmlNS:  soap2.XmlNsSoapEnv,
+		XmlUrn: "",
 	}
 
 	if s.headers != nil && len(s.headers) > 0 {
@@ -488,10 +441,15 @@ func (s *Client) callVersion2(ctx context.Context, soapAction string, request, r
 	} else if s.opts.mma {
 		req.Header.Add("Content-Type", fmt.Sprintf(share.MmaContentType, encoder.(*share.MmaEncoder).Boundary()))
 	} else {
-		req.Header.Add("Content-Type", soap2.ContentType)
+		if soapAction != "" {
+			req.Header.Add("Content-Type", soap2.ContentType+fmt.Sprintf(`;action="%s"`, soapAction))
+		} else {
+			req.Header.Add("Content-Type", soap2.ContentType)
+		}
+
 	}
 
-	req.Header.Set("User-Agent", "gowsdl/0.1")
+	req.Header.Set("User-Agent", "gowsdl")
 	if s.opts.httpHeaders != nil {
 		for k, v := range s.opts.httpHeaders {
 			req.Header.Set(k, v)
@@ -510,6 +468,10 @@ func (s *Client) callVersion2(ctx context.Context, soapAction string, request, r
 			TLSHandshakeTimeout: s.opts.tlshshaketimeout,
 		}
 		client = &http.Client{Timeout: s.opts.contimeout, Transport: tr}
+	}
+
+	if s.opts.debug {
+		log.Println("request to url: ", req.URL.String())
 	}
 
 	res, err := client.Do(req)
@@ -557,6 +519,7 @@ func (s *Client) callVersion2(ctx context.Context, soapAction string, request, r
 	} else {
 		dec = xml.NewDecoder(res.Body)
 	}
+	//need to remove <?xml version=\"1.0\" encoding=\"UTF-8\"?></xml>
 	if err := dec.Decode(respEnvelope); err != nil {
 		return err
 	}

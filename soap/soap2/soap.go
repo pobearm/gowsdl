@@ -2,9 +2,75 @@ package soap2
 
 import (
 	"encoding/xml"
+	"time"
 
 	"github.com/hooklift/gowsdl/soap/share"
 )
+
+//  ---------- wsse  ----------
+
+const (
+	// Predefined WSS namespaces to be used in
+	WssNsWSSE    string = "http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-secext-1.0.xsd"
+	WssNsWSU     string = "http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-utility-1.0.xsd"
+	WssNsType    string = "http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-username-token-profile-1.0#PasswordText"
+	WssNonceType string = "http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-soap-message-security-1.0#Base64Binary"
+)
+
+type WSSSecurityHeader struct {
+	XMLName   xml.Name `xml:"wsse:Security"`
+	XmlNSWsse string   `xml:"xmlns:wsse,attr"`
+	XmlNSWsu  string   `xml:"xmlns:wsu,attr"`
+
+	MustUnderstand string `xml:"soap:mustUnderstand,attr,omitempty"`
+
+	Token *WSSUsernameToken `xml:",omitempty"`
+}
+
+type WSSUsernameToken struct {
+	XMLName xml.Name `xml:"wsse:UsernameToken"`
+
+	Id string `xml:"wsu:Id,attr,omitempty"`
+
+	Username *WSSUsername `xml:",omitempty"`
+	Password *WSSPassword `xml:",omitempty"`
+	Nonce    *WSSNonce    `xml:",omitempty"`
+	Created  string       `xml:"wsu:Created,omitempty"`
+}
+
+type WSSNonce struct {
+	XMLName      xml.Name `xml:"wsse:Nonce"`
+	EncodingType string   `xml:"EncodingType,attr"`
+
+	Data string `xml:",chardata"`
+}
+
+type WSSUsername struct {
+	XMLName xml.Name `xml:"wsse:Username"`
+
+	Data string `xml:",chardata"`
+}
+
+type WSSPassword struct {
+	XMLName   xml.Name `xml:"wsse:Password"`
+	XmlNSType string   `xml:"Type,attr"`
+
+	Data string `xml:",chardata"`
+}
+
+// NewWSSSecurityHeader creates WSSSecurityHeader instance soap1.2
+func NewWSSSecurityHeader(user, pass, tokenID, mustUnderstand, nonce string) *WSSSecurityHeader {
+	hdr := &WSSSecurityHeader{XmlNSWsse: WssNsWSSE, XmlNSWsu: WssNsWSU, MustUnderstand: mustUnderstand}
+	hdr.Token = &WSSUsernameToken{Id: tokenID}
+	hdr.Token.Username = &WSSUsername{Data: user}
+	hdr.Token.Password = &WSSPassword{XmlNSType: WssNsType, Data: pass}
+	hdr.Token.Nonce = &WSSNonce{EncodingType: WssNonceType, Data: nonce}
+	// hdr.Token.Created = "2021-11-12T03:43:21.425Z"
+	hdr.Token.Created = time.Now().Format("2006-01-02T15:04:05.999Z")
+	return hdr
+}
+
+//  ---------- wsse  ----------
 
 const (
 	XmlNsSoapEnv string = "http://www.w3.org/2003/05/soap-envelope"
@@ -12,7 +78,7 @@ const (
 )
 
 type SOAPEnvelopeResponse struct {
-	XMLName     xml.Name `xml:"http://schemas.xmlsoap.org/soap/envelope/ Envelope"`
+	XMLName     xml.Name `xml:"http://www.w3.org/2003/05/soap-envelope Envelope"`
 	Header      *SOAPHeaderResponse
 	Body        SOAPBodyResponse
 	Attachments []share.MIMEMultipartAttachment `xml:"attachments,omitempty"`
@@ -21,6 +87,7 @@ type SOAPEnvelopeResponse struct {
 type SOAPEnvelope struct {
 	XMLName xml.Name `xml:"soap:Envelope"`
 	XmlNS   string   `xml:"xmlns:soap,attr"`
+	XmlUrn  string   `xml:"xmlns:urn,attr"`
 
 	Header *SOAPHeader
 	Body   SOAPBody
@@ -143,7 +210,7 @@ type FaultError interface {
 }
 
 type SOAPFault struct {
-	XMLName xml.Name `xml:"http://schemas.xmlsoap.org/soap/envelope/ Fault"`
+	XMLName xml.Name `xml:"http://www.w3.org/2003/05/soap-envelope Fault"`
 
 	Code   string     `xml:"faultcode,omitempty"`
 	String string     `xml:"faultstring,omitempty"`

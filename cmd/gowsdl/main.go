@@ -70,7 +70,7 @@ var outFile = flag.String("o", "myservice.go", "File where the generated code wi
 var dir = flag.String("d", "./", "Directory under which package directory will be created")
 var insecure = flag.Bool("i", false, "Skips TLS Verification")
 var makePublic = flag.Bool("make-public", true, "Make the generated types public/exported")
-var soapVersion = flag.String("sv", "1.2", "SOAP verion 1.1 or 1.2")
+var soapVersion = flag.String("sv", "1.1", "SOAP verion 1.1 or 1.2")
 
 func init() {
 	log.SetFlags(0)
