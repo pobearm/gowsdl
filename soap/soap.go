@@ -65,6 +65,7 @@ type options struct {
 	mma              bool
 	soapVersion      string
 	debug            bool
+	urn              string
 }
 
 var defaultOptions = options{
@@ -156,6 +157,12 @@ func WithMTOM() Option {
 func WithMIMEMultipartAttachments() Option {
 	return func(o *options) {
 		o.mma = true
+	}
+}
+
+func WithURN(urn string) Option {
+	return func(o *options) {
+		o.urn = urn
 	}
 }
 
@@ -390,10 +397,9 @@ func (s *Client) callVersion2(ctx context.Context, soapAction string, request, r
 		log.Println("we do soap1.2 now")
 	}
 	// SOAP envelope capable of namespace prefixes
-	//TODO: XmlUrn
 	envelope := soap2.SOAPEnvelope{
 		XmlNS:  soap2.XmlNsSoapEnv,
-		XmlUrn: "",
+		XmlUrn: s.opts.urn,
 	}
 
 	if s.headers != nil && len(s.headers) > 0 {
